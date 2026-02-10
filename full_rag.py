@@ -53,7 +53,29 @@ async def chat(question: str = Form(...)):
         ]
     )
     answer = response.choices[0].message.content
-    return Response(
-        content=json.dumps({"answer": answer}, ensure_ascii=False),
-        media_type="application/json"
-    )
+
+    
+    html_content = f"""
+    <!DOCTYPE html>
+    <html lang="ja">
+        <head>
+            <meta charset="utf-8">
+            <title>RAG回答結果</title>
+            <style>
+                body {{ font-family: sans-serif; padding: 20px; line-height: 1.6; background-color: #f4f4f9; }}
+                .container {{ background: white; padding: 20px; border-radius: 8px; box-shadow: 0 2px 4px rgba(0,0,0,0.1); }}
+                h1 {{ color: #333; border-bottom: 2px solid #007bff; padding-bottom: 10px; }}
+                p {{ white-space: pre-wrap; word-wrap: break-word; }}
+                .back-link {{ display: inline-block; margin-top: 20px; text-decoration: none; color: #007bff; }}
+            </style>
+        </head>
+        <body>
+            <div class="container">
+                <h1>AIからの回答</h1>
+                <p>{answer}</p>
+                <a href="/" class="back-link">← 戻ってまた質問する</a>
+            </div>
+        </body>
+    </html>
+    """
+    return HTMLResponse(content=html_content)
