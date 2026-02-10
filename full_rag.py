@@ -1,5 +1,5 @@
 from fastapi import FastAPI, UploadFile, File, Form
-from fastapi.responses import HTMLResponse
+from fastapi.responses import HTMLResponse , JSONResponse
 import os
 from dotenv import load_dotenv
 load_dotenv() # .envファイルから設定を読み込む
@@ -51,5 +51,5 @@ async def chat(question: str = Form(...)):
             {"role": "user", "content": question}
         ]
     )
-    return {"answer": response.choices[0].message.content}
-
+    answer = response.choices[0].message.content
+    return JSONResponse(content={"answer": answer}, ensure_ascii=False)
