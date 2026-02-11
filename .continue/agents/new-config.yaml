@@ -1,0 +1,7 @@
+name: Local Config
+version: 1.0.0
+schema: v1
+models:
+  - title: Llama3.2
+    provider: ollama
+    model: llama3.2:3b
