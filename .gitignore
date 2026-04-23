@@ -4,3 +4,5 @@ __pycache__
 .venv
 data.txt
 .DS_Store
+user_management.db
+data.pdf
