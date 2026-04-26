@@ -33,6 +33,17 @@ def create_tables():
                 password TEXT NOT NULL
             );
         """)
+
+       
+        cursor.execute("""
+            CREATE TABLE IF NOT EXISTS documents (
+            id SERIAL PRIMARY KEY,
+            user_id INTEGER REFERENCES users(id),
+            filename TEXT NOT NULL,
+            sentences TEXT NOT NULL,
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+            );
+        """)
         conn.commit()
         print("テーブルの作成（または確認）が完了しました")
     except Exception as e:
@@ -197,10 +208,14 @@ def login_user(user: User):
     if not result:
         raise HTTPException(status_code=404, detail="User not found")
 
+    stored_password = result['password']
+    if isinstance(stored_password, str):
+        stored_password = stored_password.encode('utf-8')
+
     is_valid = bcrypt.checkpw(
-        user.password.encode('utf-8'),
-        result['password'].encode('utf-8')
-    )
+    user.password.encode('utf-8'),
+    stored_password
+)
 
     if not is_valid:
         raise HTTPException(status_code=401, detail="Invalid password")
@@ -219,8 +234,6 @@ groq_client = Groq(api_key=os.environ.get("GROQ_API_KEY"))
 chat_messages = [
     {"role": "system", "content": "あなたは親切なAIアシスタントです。"}
 ]
-doc_sentences = []
-doc_vectors = []
 
 @app.post("/chat")
 def chat(message: str):
@@ -258,19 +271,31 @@ class RagRequest(BaseModel):
     message: str
 
 @app.post("/rag")
-def rag(request: RagRequest):
-    if not doc_vectors:
+def rag(request: RagRequest, current_user_id: int = Depends(get_current_user_id)):
+
+    conn,cursor = get_db()
+    cursor.execute(
+        "SELECT sentences FROM documents WHERE user_id = %s ORDER BY created_at DESC LIMIT 1",
+        (current_user_id,)
+        )
+    result = cursor.fetchone()
+    conn.close()
+
+    if not result:
         raise HTTPException(status_code=400, detail="ドキュメントがアップロードされていません")
     
+    sentences = [s.strip() for s in result["sentences"].split("。") if s.strip()]
+    vectors = embed(sentences)
+
     question_vector = embed([request.message])[0]
     
     scores = []
-    for vec in doc_vectors:
+    for vec in vectors:
         score = np.dot(question_vector, vec)
         scores.append(score)
     
     best_index = int(np.argmax(scores))
-    best_sentence = doc_sentences[best_index]
+    best_sentence = sentences[best_index]
     best_score = scores[best_index]
 
     if best_score < 0.5:
@@ -292,8 +317,11 @@ def rag(request: RagRequest):
 
 
 @app.post("/upload")
-async def upload(file: UploadFile = File(...)):
-    global doc_sentences, doc_vectors
+async def upload(
+    file: UploadFile = File(...),
+    current_user_id: int = Depends(get_current_user_id)
+    ):
+   
     
     content = await file.read()
     
@@ -306,7 +334,16 @@ async def upload(file: UploadFile = File(...)):
     else:
         text = content.decode("utf-8")
     
-    doc_sentences = [s.strip() for s in text.split("。") if s.strip()]
-    doc_vectors = embed(doc_sentences)
+    sentences = [s.strip() for s in text.split("。") if s.strip()]
+    vectors = embed(sentences)
+
+    conn,cousor = get_db()
+    sentence_str = "。".join(sentences)
+    cousor.execute(
+        "INSERT INTO documents (user_id, filename, sentences) VALUES (%s,%s,%s)",
+        (current_user_id,file.filename,sentence_str)
+    )
+    conn.commit()
+    conn.close()
     
-    return {"filename": file.filename, "sentences": len(doc_sentences)}
+    return {"filename": file.filename, "sentences": len(sentences)}
